@@ -20,7 +20,7 @@ CI = "name: ci\non: [push]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    step
 @pytest.fixture
 def repo(workspace):
     root: Path = workspace.root
-    (root / ".github/workflows").mkdir(parents=True)
+    (root / ".github/workflows").mkdir(parents=True, exist_ok=True)
     (root / ".github/workflows/ci.yml").write_text(CI)
     (root / "requirements.txt").write_text("pytest\n")
     return workspace

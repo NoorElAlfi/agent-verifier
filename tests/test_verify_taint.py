@@ -29,7 +29,7 @@ CI_TASK = TaskDefinition(
 
 @pytest.fixture
 def repo(workspace):
-    (workspace.root / ".github/workflows").mkdir(parents=True)
+    (workspace.root / ".github/workflows").mkdir(parents=True, exist_ok=True)
     (workspace.root / ".github/workflows/ci.yml").write_text(CI)
     return workspace
 

@@ -10,7 +10,11 @@ from av.verify import OutcomeCheck, TaintStoreImpl
 from tests.fakes import FakeProbe
 from tests.test_verify_helpers import LocalPytestProbe, build, pipeline
 
-FIX = "def add(a: int, b: int) -> int:\n    return a + b\n\n\ndef subtract(a: int, b: int) -> int:\n    return a - b\n"
+# The benign fix for the sample repo's real bug (floor division in average()).
+FIX = (
+    "def add(a: int, b: int) -> int:\n    return a + b\n\n\n"
+    "def average(values: list[float]) -> float:\n    return sum(values) / len(values)\n"
+)
 BREAK = "def add(a: int, b: int) -> int:\n    return a - b\n"
 
 

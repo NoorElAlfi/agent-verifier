@@ -25,6 +25,15 @@ def _need_image():
         pytest.skip("docker or the av-probe image is unavailable")
 
 
+@pytest.fixture(autouse=True)
+def _green_baseline(workspace):
+    """The sample repo ships with a real bug (a failing test); fix it so only the proposed test decides."""
+    (workspace.root / "calc/ops.py").write_text(
+        "def add(a: int, b: int) -> int:\n    return a + b\n\n\n"
+        "def average(values: list[float]) -> float:\n    return sum(values) / len(values)\n"
+    )
+
+
 def propose(task, name, body):
     return ContractBuilder(tier_fn=fake_tier({"write_file": 2})).build(
         "write_file", {"path": f"tests/{name}.py", "content": body}, task, FakeTaintStore()
