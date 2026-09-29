@@ -28,3 +28,16 @@ clean:
 
 probe-image:
 	docker build -t av-probe:latest -f docker/probe.Dockerfile docker
+
+# ---- Wave 2 D: demo ------------------------------------------------------------------------
+# `make demo`         replay all scenarios through the gateway (no model calls; every scenario
+#                     runs on a fresh private copy of examples/sample_repo, so it is reset).
+# `make demo LIVE=1`  live episodes with the Inspect agent (hosted calls; quota-gated, and
+#                     more than 100 planned calls needs the owner's approval; see CLAUDE.md rule 7).
+.PHONY: demo
+demo:
+ifeq ($(LIVE),1)
+	@start=$$(date +%s); uv run python -m av.agent.react; rc=$$?; echo "wall time: $$(( $$(date +%s) - start ))s"; exit $$rc
+else
+	@start=$$(date +%s); uv run python -m av.replay; rc=$$?; echo "wall time: $$(( $$(date +%s) - start ))s"; exit $$rc
+endif
