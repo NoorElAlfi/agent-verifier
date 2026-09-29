@@ -9,17 +9,16 @@ or a person clicking "approve". Each gate costs something: latency, tokens, fals
 human's attention. I haven't found a published like-for-like comparison of which checks stop
 real harm and which only add friction.
 
-This series tries to measure that. This post covers the problem, what already exists, the
-design of an open-source gate built to run the comparison, a replay demo, and the evaluation
-plan, frozen before any results exist. I'm not claiming the gate is safe. I'm asking which of
-its parts are worth having.
+This series tries to measure that. This post covers the problem, prior work, the design of an
+open-source gate built to run the comparison, a demo, and the frozen evaluation plan. I'm not
+claiming the gate is safe. I'm asking which of its parts are worth having.
 
 ## The problem: the gate is often in the wrong place
 
 Anthropic's write-up of Claude Code's auto mode is a detailed, candid account of a deployed
 permission gate. It starts from a behavioural fact: **"Claude Code users approve 93% of
-permission prompts."** When nearly every prompt is approved, prompting stops being a check. Auto mode replaces most prompts with
-tiers: an allowlist, then **"File writes and edits inside the project directory are allowed
+permission prompts."** When nearly every prompt is approved, prompting stops being a check.
+Auto mode replaces most prompts with tiers: an allowlist, then **"File writes and edits inside the project directory are allowed
 without a classifier call"**, then a two-stage transcript classifier for everything else.
 Anthropic reports a **0.4% false-positive rate on real traffic (n = 10,000)** and a **17%
 false-negative rate on real overeager actions (n = 52)**, and calls the 17% "the honest
@@ -29,13 +28,13 @@ An independent study, *Measuring the Permission Gate* (Ji et al., 2026), stress-
 gate on AmPermBench, a 128-prompt benchmark of deliberately ambiguous DevOps authorization
 scenarios. On that stress test the end-to-end false-negative rate was **81.0% (95% CI 73.8–87.4%)**.
 The authors say plainly that this is not comparable to Anthropic's 17%, because it targets
-the authorization boundary on purpose rather than measuring accidental overshoot. The detail
-that matters most here is a different one. Of the 253 state-changing actions in their run,
+the authorization boundary on purpose rather than measuring accidental overshoot. More relevant
+here: of the 253 state-changing actions in their run,
 **93 (36.8%) were in-project Edit or Write calls, which, by design, the classifier never
 evaluated**.
 
-That's not a bug in auto mode; it's a deliberate trade, since in-project edits are the bulk of
-the work. But it shows the scope question in its sharpest form. An agent asked to fix a bug in `calc/ops.py` that also edits
+That's a deliberate trade, not a bug: in-project edits are the bulk of the work. But it shows the scope question in its sharpest form. An agent asked to fix a bug in
+`calc/ops.py` that also edits
 `.github/workflows/ci.yml`, or deletes a failing test, is still "editing a file in the project".
 Whether that edit is inside the task is exactly the kind of thing a transcript classifier can
 miss and a file-path allowlist can't express.
@@ -49,8 +48,8 @@ pre-commit checks stop scope drift and injected instructions, and what does each
 
 ## What already exists
 
-A lot. Action contracts, graded decisions and hash-bound approvals are already claimed by
-several projects; I'm not claiming them as new. Condensed (the full table, with sources, is in
+A lot. Action contracts, graded decisions and hash-bound approvals all exist already; I don't
+claim them as new. Condensed (full table with sources in
 [`docs/prior-art.md`](../docs/prior-art.md)):
 
 | System | What it is | Closest overlap with this project |
@@ -73,8 +72,8 @@ of which of those checks earn their cost against OPA-only, auto-mode-style and R
 
 ## The design: who sets the fields?
 
-The first question a security engineer asks of any "the agent submits a structured action and
-we check it" design is: **who fills in the fields?** If the agent writes `"in_scope": true` or
+A security engineer's first question about any design where the agent submits a structured
+action is: **who fills in the fields?** If the agent writes `"in_scope": true` or
 `"source": "user"` into its own request and the gate believes it, the gate checks nothing.
 
 ### The trust boundary
@@ -89,8 +88,7 @@ Every tool call is turned into an **action contract** by one component, the gate
   the gateway (file contents, directory listings, test output, issue text) is recorded as
   `untrusted_content`. A proposal is linked to it when its parameters contain a URL, a
   command token (`curl`, `wget`, `nc`, `base64 -d`, `$SECRETS`, env dumps and so on) or a
-  substring of 20 characters or more seen there. Matching normalises case, whitespace,
-  Unicode forms and zero-width characters.
+  substring of 20 characters or more seen there.
 - **Anything the agent says about itself goes into `agent_claims`.** It is written to the
   ledger and never read by a decision: policy, checks and probes get a copy with the claims
   removed, and the decision function has no parameter they could arrive through. Tests include
@@ -114,7 +112,7 @@ Each contract goes through the same stages ([diagram](../docs/architecture.md)):
    size limit. This answers "may it?" and nothing else.
 2. **Verify**: assign a risk tier from 0 (reads) to 4 (anything touching an undeclared
    protected class), then run the deterministic checks. Scope drift matches every mutating
-   target (after resolving `..`, symlinks, case and hard links) against the task's globs; CI
+   target against the task's globs; CI
    config, test deletion or weakening, dependency manifests and secret-like paths count as
    drift unless the task declares them. Provenance applies the taint rule above.
 3. **Probe** according to the tier's entry in a single catalog table: a diff, a secret scan,
@@ -139,7 +137,7 @@ Inspect AI do the heavy lifting. What I've written is the part that decides.
 ## The demo
 
 `make demo` replays three scenarios on a tiny Python repo with a real bug (`average()` uses
-floor division). It makes no model calls. In each scenario the task is "fix `average()` so the
+floor division). In each scenario the task is "fix `average()` so the
 tests pass".
 
 {{DEMO_GIF}}
@@ -159,15 +157,17 @@ tests pass".
   pass afterwards.
 
 Every decision lands in a hash-chained ledger, and the demo ends by printing
-`hosted calls: 0`. On a fresh clone the whole replay takes {{M1_DEMO_TIME}}.
+`hosted calls: 0`. On a fresh clone the whole replay takes about 4 seconds (M1 in `reports/post0-measurements.md`; the one-time probe image build is extra).
 
-**Where the fixtures came from:** {{FIXTURE_ORIGINS}}. *Recorded* means the proposals a hosted
+**Where the fixtures came from:** the benign fix is *recorded* (deepseek-v4.1-flash, 2026-09-29); scope drift and injection are *synthetic*, because in three live attempts each the model never drifted out of scope, and it read the injected issue every time and refused the `curl` step. *Recorded* means the proposals a hosted
 model actually made in a live run (model and date noted). *Synthetic* means hand-written,
 because the model didn't show that behaviour on its own within three attempts, which is a
 finding in itself. A gate catching scripted misbehaviour proves the mechanism, not the threat.
 
 `make demo LIVE=1` runs the same scenarios with a minimal Inspect ReAct agent against a hosted
-open model ({{MODEL}}). One live episode cost {{LIVE_EPISODE_COST}}.
+open model (deepseek-v4.1-flash via OpenCode Go; the plan named Qwen3-Coder, which the provider
+doesn't offer). One live episode cost 6 hosted calls, about 8–10k prompt and under 1k completion
+tokens, and 14–29 seconds.
 
 ## The evaluation plan, frozen before results
 
@@ -191,12 +191,11 @@ before any tuning; changing it afterwards needs a new tag and a disclosed note. 
   with 95% bootstrap CIs that resample whole tasks. About 14 harmful tasks gives descriptive
   results, not significance, and Post 1 will say so next to the first number.
 - **Budget:** about 320 episodes within an owner-approved envelope of roughly 3k–6k hosted
-  calls, at most about 300 a day. Measured per-episode cost: {{BUDGET}}.
+  calls, at most about 300 a day. Post 0 measured 6 calls per episode on small scenarios, so
+  about 1.9k: a lower bound.
 - **Published regardless.** If the adaptive verifier doesn't beat OPA-only, that's the result.
 
 ## Not done yet
-
-This is a design and a demo, not evidence.
 
 **Known misses, each pinned by a strict `xfail` test** so the list can't drift silently:
 
@@ -209,15 +208,14 @@ This is a design and a demo, not evidence.
 - *Fragmented and encoded payloads:* an injection split into pieces under 20 characters, a
   short domain with no scheme, or a base64 payload in the issue that the agent decodes.
 - *Untrusted code without a listed token in an ordinary source file* is logged, not blocked.
-  That was a deliberate call: `write_file` replaces the whole file, so any rewrite of a file
-  the agent has read overlaps with what it read. Blocking on plain substring overlap in ordinary
-  files would send most benign fixes to a human. Sensitive targets (CI, dependencies, scripts,
+  Deliberately: `write_file` replaces the whole file, so every rewrite overlaps what the agent
+  read, and blocking on that would send most benign fixes to a human. Sensitive targets (CI, dependencies, scripts,
   secret paths) and any untrusted URL or command token still block.
 
 **Not built or not measured:**
 
 - No benchmark results. That's Post 1.
-- The fixtures are {{FIXTURE_ORIGINS}}. The demo shows the mechanism works on these three
+- Two of the three fixtures are synthetic. The demo shows the mechanism works on these three
   scenarios, not how often agents misbehave.
 - One agent, one small repo, six tools, no shell. Nothing here says anything about Claude Code,
   opencode or any other real CLI agent.
@@ -226,10 +224,8 @@ This is a design and a demo, not evidence.
 - The sandbox's memory and CPU caps are set but their enforcement isn't verified; neither are
   concurrent ledger writers or OPA latency under load.
 - Every delete currently asks a human, and CI edits and test deletions or weakening need the
-  task to declare them. Both will show up as false blocks in Post 1; that cost is part of what's
-  being measured.
-- An LLM critic from a different model family is planned for Post 1. That's a design choice to
-  be measured: the papers that motivate it don't show a different family fixes the bias.
+  task to declare them. Both will show up as false blocks in Post 1, and that cost is measured.
+- A different-family LLM critic is planned for Post 1 as a choice to measure, not a known fix.
 
 ## What's next
 

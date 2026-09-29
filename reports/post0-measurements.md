@@ -1,10 +1,10 @@
 # Post 0 measurements
 
-Generated 2026-09-29T20:12:18+00:00 by scripts/measure_post0.py. Every number below comes from AV_DATA_DIR/quota.json, AV_DATA_DIR/episodes, or a command run by the script.
+Generated 2026-09-29T20:14:09+00:00 by scripts/measure_post0.py. Every number below comes from AV_DATA_DIR/quota.json, AV_DATA_DIR/episodes, or a command run by the script.
 
 ## M1: `make demo` on a fresh clone
 
-`make demo` (replay) on a fresh clone at /tmp/fresh: **4.3 s** (exit 0); `uv sync` took 0.3 s and clone 0.0 s (not part of the demo time); demo output: `hosted calls: 0`. Excludes the one-time Docker probe image build.
+`make demo` (replay) on a fresh clone at /tmp/fresh: **4.0 s** (exit 0); `uv sync` took 0.4 s and clone 0.0 s (not part of the demo time); demo output: `hosted calls: 0`. Excludes the one-time Docker probe image build.
 
 ## M10: disk footprint and hosted calls
 
@@ -17,7 +17,7 @@ Build Cache     8         0         196.4MB   12.29kB
 ```
 
 - probe image: `av-probe:latest 196MB`
-- `.venv`: 307M; `bin/`: 62M; AV_DATA_DIR: 8.4M
+- `.venv`: 275M; `bin/`: 62M; AV_DATA_DIR: 8.8M
 - **total hosted calls so far: 46** (Post 0 cap 200); tokens: 64508 prompt, 5283 completion
 - by day: {'2026-09-29': 46}
 

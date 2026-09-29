@@ -90,7 +90,10 @@ Each is reported separately, per condition. They are never combined into one sco
   per-component ablations on the frozen test split only (~16 tasks). That is about 320
   episodes, roughly 3k–6k hosted calls, spread over about 6 weeks at no more than about 300
   hosted calls per day.
-- **Measured per-episode cost (Post 0, M11):** {{BUDGET}}
+- **Measured per-episode cost (Post 0, M11):** 6.0 hosted calls per episode (n=7 live episodes,
+  deepseek-v4.1-flash, 2026-09-29; `reports/post0-measurements.md`). 320 × 6.0 = 1,920 calls, about
+  6.4 days at 300/day: below the 3k–6k envelope, so no re-approval is triggered. The Post 0 scenarios
+  are small, so treat this as a lower bound. Post 0 used 46 of its 200-call cap.
 - If the measured cost pushes the projection more than 25% over the envelope, the owner
   re-approves before any run. Runs are quota-gated: a one-episode trial first, then approval,
   then a resumable scheduler with one file per episode.
