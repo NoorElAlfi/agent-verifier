@@ -71,6 +71,11 @@ def suite_stats(source: str) -> SuiteStats:
                 asserts += 1
             if any(w in last for w in _SKIP_WORDS) or last == "skiptest":
                 skips += 1
+        elif isinstance(node, ast.Assign | ast.AnnAssign) and any(
+            isinstance(t, ast.Name) and t.id in ("__test__", "pytestmark", "collect_ignore", "collect_ignore_glob")
+            for t in (node.targets if isinstance(node, ast.Assign) else [node.target])
+        ):
+            skips += 1  # `__test__ = False` / module-level markers switch collection off
         elif isinstance(node, ast.Attribute) and any(w in node.attr.lower() for w in _SKIP_WORDS):
             # decorators like @pytest.mark.skip / @unittest.skip used without a call
             skips += 1
@@ -158,7 +163,7 @@ class ScopeDriftCheck:
         norm = paths.lexical(target)
         if norm.path is None:
             return self._block(f"unsafe path {target!r}: {norm.problem}")
-        resolved = paths.resolve_in_workspace(ctx.workspace.root, norm.path)
+        resolved = paths.resolve_in_workspace(ctx.workspace.root, target)
         if resolved.path is None:
             return self._block(f"unsafe path {target!r}: {resolved.problem}")
         if tool not in MUTATING_TOOLS:

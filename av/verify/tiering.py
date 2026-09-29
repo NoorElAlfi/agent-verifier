@@ -66,6 +66,10 @@ def tier_for(tool: str, target: str, task: TaskDefinition, content: str | None =
     norm = paths.lexical(target)
     if norm.path is None:
         return 4, f"unsafe path: {norm.problem}"
+    if ".." in target.split("/"):
+        # The OS applies `..` after following symlinks, so the lexical path may not be the
+        # file written; the scope check resolves it on disk, the tier just assumes the worst.
+        return 4, "path contains a '..' component"
     path = norm.path
     classes = paths.protected_classes(path)
     declared = set(task.declared_protected)

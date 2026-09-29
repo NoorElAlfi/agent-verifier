@@ -1,5 +1,5 @@
 # W2-B: Verification checks (tiering, scope drift, provenance, outcome)
-**Status:** done   **Branch:** w2/B
+**Status:** waiting-for-approval (code complete and tested; the owner must confirm Deviation 1 per rule 1)   **Branch:** w2/B
 
 ## Built
 - `av/verify/paths.py`: lexical path normalisation, the canonical (NFKC, case-folded, zero-width-free) view, segment-wise scope globs, THE protected-class / test-config / script pattern tables, symlink + hard-link resolution.
@@ -34,6 +34,11 @@
   to `.github/x` and is classified as CI. For read tools the same unsafe-path rule blocks
   (defence in depth next to OPA's denylist); otherwise reads pass.
 - **Both views must pass:** the lexical path and, when different, the symlink-resolved path.
+  The resolved path is computed from the RAW `params.path` the way the OS does it (symlinks
+  followed before `..`), never from the lexical path (code-review finding B1:
+  `calc/lnk/../ci.yml` with `calc/lnk -> ../.github/workflows/sub` writes
+  `.github/workflows/ci.yml`; now blocked, regression-tested). Any raw path with a `..`
+  component is tier 4.
 - **Protected patterns** (all in `paths.py`): ci = `.github/`, `.gitlab/`, `.circleci/`,
   `.buildkite/`, `.husky/`, …, `.gitlab-ci.yml`, `.travis.yml`, Jenkinsfile, `tox.ini`,
   `noxfile.py`, `.pre-commit-config.yaml`, …; dependencies = `pyproject.toml`, `setup.py`,
@@ -51,7 +56,7 @@
 - **Taint matching** (`TaintStoreImpl.match`): every string param, normalised (NFKC,
   zero-width removed, casefold, whitespace collapsed). Kinds: `substring` (maximal runs whose
   every 20-char window occurs in one source), `url` (scheme/trailing slash/fragment ignored),
-  `command` (18 named token patterns: curl, wget, nc, socat, /dev/tcp, base64 -d, `| sh`,
+  `command` (20 named token patterns: os.system/subprocess/`__import__`/eval/exec, `rm -rf`, curl, wget, nc, socat, /dev/tcp, base64 -d, `| sh`,
   `sh -c`, powershell, `$SECRETS`/`${{ secrets`, secret-named env vars, env dumps,
   os.environ/getenv, HTTP clients, raw sockets, package installs) present in the params AND in
   some read. Hits are deterministic and in stable order.
@@ -76,16 +81,28 @@
 - No file in `av/verify/` contains the string `agent_claims`; a test enforces it.
 
 ## Deviations
-- **Spec "tainted params → reject" is narrowed** as PLAN step 3 says (block for CI, workflow,
+- **(Deviation 1, needs owner decision) Spec "tainted params → reject" is narrowed** as PLAN step 3 says (block for CI, workflow,
   script, dependency writes) plus URL/command hits on any write; substring-only overlap on an
   ordinary file is `info`. Reason: under the literal reading every rewrite of a file the agent
   has read is tainted, which contradicts M4. **Owner: please confirm** (this is the one place
-  where PLAN and the spec's default table read differently).
+  where PLAN and the spec's default table read differently). The code-reviewer agreed that
+  counting only new material is necessary, but disagreed with `info` for substring-only
+  overlap in ordinary files. It suggests `escalate` (require_human) for new ≥20-char untrusted
+  substrings in executable files such as `.py`. Trade-off: that closes the "paste untrusted code
+  with no listed token" gap, but it sends many benign fixes that quote a test or issue to a
+  human (more false blocks). It is a one-line change in `ProvenanceCheck.run`. Exec-style
+  tokens (`os.system`, `subprocess`, `__import__`, `eval(`/`exec(`, `rm -rf`) were added to
+  COMMAND_PATTERNS, so those already block.
 - In-scope deletes are tier 3 (PLAN: "deletions higher"), so every delete asks a human.
 - Test-weakening is a heuristic (see known limitations below), not a proof.
 
 ## Tests
-`uv run pytest -q`: **306 passed, 6 xfailed** (121 from W1 + 185 new passed + 6 xfail), offline.
+`uv run pytest -q`: **313 passed, 7 xfailed** (121 from W1 + 192 new passed + 7 xfail), offline.
+test-runner: pass (`make demo` absent, as expected). code-reviewer: no rule violations. It
+found bypasses B1 (symlink + `..`: fixed), B2 (`__test__ = False`: fixed; a new test file that
+monkeypatches code: xfail), B3 (exec-style code with no listed token: tokens added; the
+substring-only policy is Deviation 1) and B4 (`uv.toml` and `.pytest.ini` added; NTFS dotless-ı
+case folding not handled, and it only matters on /mnt/c).
 - M2: write_file & delete_file × {CI workflow, test file, requirements.txt, pyproject.toml} ×
   {honest, lying agent_claims} → reject, not executed, file unchanged, ledger reason cites scope
   drift, the in-scope fix in the same episode executes. Ordinary drift → require_human, oracle
@@ -107,7 +124,8 @@
   pre-execution run_tests probe.
 - **xfail (known limitations, strict):** expected-value change in a test (`== 5` → `== 6`);
   early `return` before asserts; paraphrased injection; injection split into < 20-char
-  fragments; scheme-less short domain; base64-encoded payload decoded by the agent.
+  fragments; scheme-less short domain; base64-encoded payload decoded by the agent; a new
+  test file that monkeypatches the code under test at import time.
 - Unverified here: C's real probes (Docker), D's gateway recording reads, OPA.
 
 ## Interface requests
@@ -129,7 +147,11 @@
    contents, list_files output, run_tests output, and any issue text in the scenario. Suggested
    refs: `read_file:<path>`, `list_files:<path>`, `run_tests`, `issue:<id>`. Scenario
    `scope_globs` use `*` = one segment, `**` = any depth (e.g. `calc/**/*.py`).
-4. **SHARED (optional, merge decides):** `basic_scope_ok` in `av/contracts.py` has looser glob
+4. **Agent A (executor):** apply writes to `root / params.path` (the raw path; the OS
+   resolves it the same way ScopeDriftCheck now does). Don't re-normalise `..` textually
+   first, or the executed file can differ from the verified one. Ideally, also refuse
+   when the resolved path leaves the root.
+5. **SHARED (optional, merge decides):** `basic_scope_ok` in `av/contracts.py` has looser glob
    semantics (`*` crosses `/`); either make `scope_ok` the ContractBuilder default or note that
    `derived_scope_ok` is informational only. Also, ContractBuilder's evidence comes from
    `match(params)` on the full content, so a benign rewrite of a read file records

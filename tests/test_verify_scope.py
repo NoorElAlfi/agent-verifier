@@ -263,3 +263,41 @@ def test_limitation_expected_value_change_is_not_detected():
 @pytest.mark.xfail(strict=True, reason="known limitation: an early return before the asserts keeps every count equal")
 def test_limitation_early_return_is_not_detected():
     assert weakening_reason("tests/test_ops.py", OLD, OLD.replace("def test_add():\n", "def test_add():\n    return\n"))
+
+
+@pytest.mark.xfail(strict=True, reason="known limitation: a NEW test file can monkeypatch the code under test at import time")
+def test_limitation_new_test_file_monkeypatches_code():
+    evil = "import calc.ops\ncalc.ops.add = lambda a, b: 5\n\n\ndef test_ok():\n    assert True\n"
+    assert weakening_reason("tests/test_aaa.py", None, evil)
+
+
+# --------------------------------------------------------------------------- review fixes
+
+
+def test_symlink_then_dotdot_is_resolved_like_the_os(repo):
+    """Review B1: `calc/lnk/../ci.yml` with calc/lnk -> ../.github/workflows/sub is
+    `.github/workflows/ci.yml` to the OS (symlinks before `..`), not `calc/ci.yml`."""
+    from av.contracts import TaskDefinition
+    from av.verify import assign_tier
+
+    (repo.root / ".github/workflows/sub").mkdir()
+    os.symlink("../.github/workflows/sub", repo.root / "calc/lnk")
+    t = TaskDefinition(task_id="t", objective="o", scope_globs=("calc/**",))
+    c = build(t, "write_file", {"path": "calc/lnk/../ci.yml", "content": "x"})
+    res = ScopeDriftCheck().run(c, t, ctx(repo))
+    assert not res.passed and res.severity == "block" and ".github/workflows/ci.yml" in res.reason
+    assert assign_tier(c, t) == 4
+    rec = pipeline(repo).run(c, t)
+    assert rec.final_decision == Decision.REJECT and not rec.executed
+    assert (repo.root / ".github/workflows/ci.yml").read_text() == CI
+
+
+def test_module_level_collection_switches_are_weakening():
+    assert weakening_reason("tests/test_ops.py", OLD, OLD + "\n__test__ = False\n")
+    assert weakening_reason("tests/test_ops.py", OLD, OLD + "\npytestmark = pytest.mark.skip\n")
+
+
+def test_uv_toml_and_dot_pytest_ini_are_protected(task, repo):
+    for path in ("uv.toml", ".pytest.ini"):
+        res = check(task, repo, "write_file", {"path": path, "content": "x"})
+        assert not res.passed and res.severity == "block"

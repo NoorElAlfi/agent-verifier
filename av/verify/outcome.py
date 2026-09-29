@@ -42,7 +42,7 @@ class OutcomeCheck:
             if norm.path is not None:
                 allowed.add(norm.path)
                 # A write through an (in-scope, already verified) symlink changes its target.
-                resolved = paths.resolve_in_workspace(ctx.workspace.root, norm.path)
+                resolved = paths.resolve_in_workspace(ctx.workspace.root, contract.params["path"])
                 if resolved.path is not None:
                     allowed.add(resolved.path)
         unexpected = [p for p in changed if p not in allowed]

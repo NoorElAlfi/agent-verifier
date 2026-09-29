@@ -165,6 +165,8 @@ PROTECTED_PATTERNS: dict[str, tuple[str, ...]] = {
         "base:.gitmodules",
         "base:.pip.conf",
         "base:pip.conf",
+        "base:uv.toml",
+        "base:.condarc",
     ),
     "secrets": (
         "base:.env",
@@ -213,12 +215,13 @@ PROTECTED_PATTERNS: dict[str, tuple[str, ...]] = {
         "base:*_tests.py",
         "base:conftest.py",
         "base:pytest.ini",
+        "base:.pytest.ini",
     ),
 }
 
 #: Test-path files whose ANY change counts as weakening: they configure collection and can
 #: deselect or skip tests without touching a test body.
-TEST_CONFIG_BASENAMES: frozenset[str] = frozenset({"conftest.py", "pytest.ini"})
+TEST_CONFIG_BASENAMES: frozenset[str] = frozenset({"conftest.py", "pytest.ini", ".pytest.ini"})
 
 #: Executable or build-script paths. Not a protected class (the spec names four), but a write
 #: here is tier 2 and provenance-sensitive (PLAN: "CI, workflow, script or dependency write").
@@ -310,12 +313,16 @@ class Resolved:
     problem: str = ""
 
 
-def resolve_in_workspace(root: Path, lex_path: str) -> Resolved:
-    """Follow symlinks for `lex_path` under `root`. Leaving the workspace (via any symlink) is a
+def resolve_in_workspace(root: Path, raw_path: str) -> Resolved:
+    """Follow symlinks for the RAW `raw_path` under `root` exactly as the OS will when the
+    executor opens `root / raw_path`: symlinks are followed BEFORE `..` is applied, so
+    `calc/lnk/../ci.yml` with `calc/lnk -> ../.github/workflows/sub` lands in
+    `.github/workflows/`. (Never pass the lexically normalised path here: that applies `..`
+    first and sees a different file.) The caller must have checked `lexical(raw_path)` first. Leaving the workspace (via any symlink) is a
     problem; so is landing inside `.git`, and writing through a hard-linked file (another path
     shares the same bytes, so the change would land somewhere the scope check never saw)."""
     root_r = Path(root).resolve()
-    full = (root_r / lex_path).resolve(strict=False)
+    full = (root_r / raw_path).resolve(strict=False)
     if not full.is_relative_to(root_r) or full == root_r:
         return Resolved(None, None, "path resolves outside the workspace (symlink)")
     rel = full.relative_to(root_r).as_posix()

@@ -89,6 +89,8 @@ COMMAND_PATTERNS: dict[str, re.Pattern[str]] = {
         "os.environ": r"\bos\.environ\b|\bos\.getenv\b|\bprocess\.env\b",
         "http client": r"\burlopen\b|\burllib\.request\b|\brequests\.(?:get|post|put)\b|\bhttpx\.(?:get|post|put)\b|\bhttp\.client\b",
         "raw socket": r"\bsocket\.(?:socket|create_connection)\b",
+        "os.system/exec": r"\bos\.(?:system|popen|exec[lv]p?e?|spawn[lv]p?e?)\b|\bsubprocess\b|\b__import__\b|\b(?:eval|exec)\s*\(|\bpty\.spawn\b",
+        "destructive rm": r"\brm\s+-[a-z]*[rf]",
         "package install": r"\b(?:pip|pip3|uv pip|npm|yarn|pnpm|gem)\s+(?:install|add)\b",
     }.items()
 }
@@ -222,7 +224,7 @@ class ProvenanceCheck:
 
         norm = paths.lexical(contract.params.get("path"))
         lex = norm.path or str(contract.params.get("path"))
-        resolved = paths.resolve_in_workspace(ctx.workspace.root, norm.path) if norm.path else None
+        resolved = paths.resolve_in_workspace(ctx.workspace.root, contract.params["path"]) if norm.path else None
         views = paths.paths_of(lex, resolved)
         old = ""
         if resolved is not None and resolved.file is not None and resolved.file.is_file():
@@ -255,15 +257,22 @@ class ProvenanceCheck:
 
     @staticmethod
     def _new_only(hits: list[TaintHit], old: str, new: str) -> list[TaintHit]:
-        old_active = active_text(old)
-        new_active = active_text(new)
-        old_cmds, new_cmds = command_counts(old_active), command_counts(new_active)
-        new_norm = normalize(new)
+        old_active, new_active = active_text(old), active_text(new)
+        old_norm, new_norm = normalize(old), normalize(new)
+        # A token is new if its count rises in the active text (uncommenting) OR in the full
+        # text (`echo "a #b"; curl ...`: the naive comment strip would hide it).
+        rising = {
+            name
+            for before, after in ((command_counts(old_active), command_counts(new_active)),
+                                  (command_counts(old_norm), command_counts(new_norm)))
+            for name, n in after.items()
+            if n > before.get(name, 0)
+        }
         keep = []
         for h in hits:
             matched = normalize(h.matched)
             if h.kind == "command":
-                if new_cmds.get(h.matched, 0) > old_cmds.get(h.matched, 0):
+                if h.matched in rising:
                     keep.append(h)
                 elif h.matched not in COMMAND_PATTERNS and matched in new_norm and matched not in old_active:
                     keep.append(h)  # a store with other token names: fall back to text
