@@ -166,8 +166,8 @@ finding in itself. A gate catching scripted misbehaviour proves the mechanism, n
 
 `make demo LIVE=1` runs the same scenarios with a minimal Inspect ReAct agent against a hosted
 open model (deepseek-v4.1-flash via OpenCode Go; the plan named Qwen3-Coder, which the provider
-doesn't offer). One live episode cost 6 hosted calls, about 8–10k prompt and under 1k completion
-tokens, and 14–29 seconds.
+doesn't offer). One live episode cost 6 hosted calls, 7.7–10.2k prompt tokens (including
+cached), under 1k completion tokens, and 14–29 seconds.
 
 ## The evaluation plan, frozen before results
 
