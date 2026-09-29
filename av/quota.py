@@ -87,9 +87,13 @@ def assert_budget(n: int = 1, *, approved: int | None = None) -> None:
     """Raise QuotaGate unless n more hosted calls fit every cap.
 
     - n > APPROVAL_THRESHOLD needs `approved` (or AV_APPROVED_CALLS) >= n;
+    - the same holds for the current run's running total (AV_RUN_ID), so per-call checks
+      can't creep past the approval gate either;
     - today's count + n <= DAILY_CAP;
     - in phase post0 (AV_PHASE, default): total + n < POST0_TOTAL_CAP.
     Call with the planned size before a run, and with n=1 before every call (av.clients does).
+    Check and record take the lock separately, so parallel runs can overshoot a cap by a few
+    calls; acceptable at this scale.
     """
     cap = approved if approved is not None else approved_cap()
     if n > APPROVAL_THRESHOLD and (cap is None or n > cap):
@@ -98,6 +102,12 @@ def assert_budget(n: int = 1, *, approved: int | None = None) -> None:
             f"tokens per episode and the projected total to your progress file, then stop"
         )
     data = usage()
+    run_total = data["runs"].get(_run_id(), 0) + n
+    if run_total > APPROVAL_THRESHOLD and (cap is None or run_total > cap):
+        raise QuotaGate(
+            f"run {_run_id()!r} would reach {run_total} hosted calls (> {APPROVAL_THRESHOLD}) without "
+            f"an approved cap covering it (AV_APPROVED_CALLS); do a 1-episode trial and ask the owner"
+        )
     today = data["days"].get(_today(), 0)
     if today + n > DAILY_CAP:
         raise QuotaGate(f"daily cap: {today} used today + {n} > {DAILY_CAP}")

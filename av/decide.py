@@ -4,8 +4,9 @@ Inputs are gateway-derived only: the authorization result, the verification chec
 probe results and the risk tier. There is deliberately no contract parameter, so agent_claims
 cannot reach a decision (CLAUDE.md rule 3).
 
-Rows are evaluated top to bottom; the first match wins. Stricter outcomes come first, so a
-reject is never downgraded to require_human by a later row.
+Rows are evaluated top to bottom; the first match wins. Errors come first (fail closed), so
+an error elsewhere turns a reject into defer; both are blocked. Among the remaining rows the
+stricter outcome comes first, so a reject is never downgraded to require_human or accept.
 
 | row | condition                                                  | decision            |
 |-----|------------------------------------------------------------|---------------------|

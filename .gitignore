@@ -3,7 +3,7 @@
 .venv/
 __pycache__/
 *.pyc
-bin/
+/bin
 data/
 *.db
 *.db-journal

@@ -405,7 +405,24 @@ class ContractBuilder:
         taint_store: TaintStore,
         agent_claims: Any = None,
     ) -> ActionContract:
-        """Raises ContractError for unknown tools, tools the task doesn't allow, or bad params."""
+        """Raises ContractError for unknown tools, tools the task doesn't allow, or bad params,
+        and also (chained) when the taint store, scope_fn or tier_fn fails. Callers catch
+        ContractError, refuse the call, and execute nothing."""
+        try:
+            return self._build(tool, params, task, taint_store, agent_claims)
+        except ContractError:
+            raise
+        except Exception as exc:
+            raise ContractError(f"could not build contract: {type(exc).__name__}: {exc}") from exc
+
+    def _build(
+        self,
+        tool: str,
+        params: dict[str, Any],
+        task: TaskDefinition,
+        taint_store: TaintStore,
+        agent_claims: Any,
+    ) -> ActionContract:
         self.validate_params(tool, params)
         if tool not in task.allowed_tools:
             raise ContractError(f"tool {tool!r} is not allowed for task {task.task_id}")

@@ -116,7 +116,7 @@ def test_quota_file_lives_in_data_dir():
 
 
 def test_post0_cap_is_strictly_below_200():
-    quota.record(198)
+    quota.record(198, run_id="earlier")
     quota.assert_budget(1)  # 199 total is fine
     with pytest.raises(quota.QuotaGate, match="Post 0"):
         quota.assert_budget(2)
@@ -124,7 +124,7 @@ def test_post0_cap_is_strictly_below_200():
 
 def test_daily_cap(monkeypatch):
     monkeypatch.setenv("AV_PHASE", "post1")
-    quota.record(290)
+    quota.record(290, run_id="earlier")
     quota.assert_budget(10, approved=10)
     with pytest.raises(quota.QuotaGate, match="daily"):
         quota.assert_budget(11)
@@ -173,3 +173,13 @@ def test_proposals_need_origin_header(tmp_path):
     p.write_text('{"origin": "invented"}\n')
     with pytest.raises(Exception):
         load_proposals(p)
+
+
+def test_per_call_checks_cannot_creep_past_approval(monkeypatch):
+    monkeypatch.setenv("AV_PHASE", "post1")
+    monkeypatch.setenv("AV_RUN_ID", "long-run")
+    quota.record(100, run_id="long-run")
+    with pytest.raises(quota.QuotaGate, match="approved cap"):
+        quota.assert_budget(1)
+    monkeypatch.setenv("AV_APPROVED_CALLS", "150")
+    quota.assert_budget(1)

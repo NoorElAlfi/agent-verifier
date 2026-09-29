@@ -137,7 +137,8 @@ def ollama() -> ChatClient:
 
 @contextmanager
 def use_clients(hosted: ChatClient | None = None, ollama: ChatClient | None = None) -> Iterator[None]:
-    """Temporarily inject clients (None leaves that one unchanged)."""
+    """Temporarily inject clients (None leaves that one unchanged). For tests and fakes only:
+    an injected client is NOT counted by av.quota, so never inject a real hosted client."""
     global _hosted_override, _ollama_override
     prev = (_hosted_override, _ollama_override)
     if hosted is not None:

@@ -27,6 +27,7 @@ from av.contracts import (
     HumanPrompt,
     ProbeResult,
     TaskDefinition,
+    TierFn,
     contract_hash,
 )
 from av.decide import decide
@@ -90,6 +91,10 @@ class Pipeline:
     taint_store: TaintStore
     outcome_checks: Sequence[Check] = ()
     oracle: HumanOracle = field(default_factory=ScriptedOracle)
+    tier_fn: TierFn | None = None
+    """If set (the gateway sets it to Agent B's assign_tier), the pipeline recomputes the tier
+    from the claims-free view and ignores contract.risk_tier, so a hand-built contract can't
+    pick its own tier. An error here -> defer."""
     max_reverify: int = 1
     """How many times to re-verify when the workspace changed between verification and
     execution (a "stale" state). After that the action is deferred."""
@@ -153,14 +158,27 @@ class Pipeline:
 
         A ledger failure is NOT swallowed: it raises, because an unrecorded action must be loud.
         """
-        record = self._run(contract, task)
+        try:
+            record = self._run(contract, task)
+        except Exception as exc:  # fail closed: anything unexpected is a ledgered defer
+            record = DecisionRecord(
+                task_id=task.task_id,
+                contract=contract,
+                contract_hash=_guard(lambda: contract_hash(contract), lambda e: "unhashable"),
+                authorization=AuthzResult(allow=False, error=f"pipeline error: {_err(exc)}"),
+                risk_tier=None,
+                final_decision=Decision.DEFER,
+                reasons=(f"pipeline error: {_err(exc)}",),
+            )
         self.ledger.append(record)
         return record
 
     def _run(self, contract: ActionContract, task: TaskDefinition) -> DecisionRecord:
         approved_hash = contract_hash(contract)
         view = contract.without_claims()
-        tier = contract.risk_tier
+        tier: int | None = contract.risk_tier
+        if self.tier_fn is not None:
+            tier = _guard(lambda: self.tier_fn(view, task), lambda e: None)  # None -> E2 defer
         stale_notes: list[str] = []
 
         for _attempt in range(max(0, self.max_reverify) + 1):

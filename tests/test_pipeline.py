@@ -288,3 +288,25 @@ def test_record_hash_is_the_contract_hash(task, workspace):
     c = contract(task)
     rec = make(workspace).run(c, task)
     assert rec.contract_hash == c.hash()
+
+
+def test_pipeline_tier_fn_overrides_contract_tier(task, workspace):
+    c = contract(task, tier=1).model_copy(update={"risk_tier": 0})  # hand-built, claims tier 0
+    oracle = ScriptedOracle()
+    rec = make(workspace, tier_fn=fake_tier({"write_file": 4}), oracle=oracle).run(c, task)
+    assert rec.risk_tier == 4 and rec.final_decision == Decision.REQUIRE_HUMAN and not rec.executed
+
+
+def test_pipeline_tier_fn_error_defers(task, workspace):
+    def bad(c, t):
+        raise Boom("tiering down")
+
+    rec = make(workspace, tier_fn=bad).run(contract(task), task)
+    assert rec.final_decision == Decision.DEFER and not rec.executed
+
+
+def test_unexpected_pipeline_error_is_a_ledgered_defer(task, workspace):
+    p = make(workspace, probe_catalog=None)  # .get() on None raises inside _run
+    rec = p.run(contract(task, tier=2), task)
+    assert rec.final_decision == Decision.DEFER and not rec.executed
+    assert p.ledger.records == [rec] and p.executor.calls == 0

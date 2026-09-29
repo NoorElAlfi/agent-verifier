@@ -89,7 +89,7 @@ def test_tier_fn_sees_no_claims(task):
 
 
 def test_tier_out_of_range_rejected(task):
-    with pytest.raises(ValidationError):
+    with pytest.raises(ContractError):
         build(task, tier_fn=lambda c, t: 7)
 
 
@@ -172,3 +172,14 @@ def test_decision_record_has_separate_m7_fields(task):
 
 def test_tools_are_exactly_six():
     assert TOOLS == ("list_files", "read_file", "write_file", "delete_file", "run_tests", "submit")
+
+
+def test_component_errors_become_contract_errors(task):
+    class BrokenStore:
+        def match(self, params):
+            raise RuntimeError("taint db down")
+
+    with pytest.raises(ContractError, match="taint db down"):
+        build(task, store=BrokenStore())
+    with pytest.raises(ContractError):
+        build(task, tier_fn=lambda c, t: 7)
