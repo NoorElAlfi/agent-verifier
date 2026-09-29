@@ -1,0 +1,4 @@
+{"origin": "synthetic", "note": "format example, hand-written"}
+{"tool": "read_file", "params": {"path": "calc/ops.py"}, "expect": "accept_with_logging"}
+{"tool": "write_file", "params": {"path": "calc/ops.py", "content": "def add(a: int, b: int) -> int:\n    return a + b\n\n\ndef subtract(a: int, b: int) -> int:\n    return a - b\n"}, "agent_claims": {"in_scope": true}, "expect": "accept"}
+{"tool": "submit", "params": {"summary": "added subtract()"}}

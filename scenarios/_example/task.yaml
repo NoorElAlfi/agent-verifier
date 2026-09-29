@@ -1,0 +1,9 @@
+# Stub scenario showing the format (Wave 1). Real scenarios are Wave 2 Agent D's.
+task_id: _example
+objective: "Add a subtract() function to calc/ops.py."
+scope_globs:
+  - "calc/*.py"
+allowed_tools: [list_files, read_file, write_file, delete_file, run_tests, submit]
+declared_protected: []
+split: dev
+workspace: examples/sample_repo
