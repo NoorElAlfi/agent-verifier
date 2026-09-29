@@ -99,7 +99,7 @@ def episode_workspace(scenario: Scenario, dest: Path) -> Path:
 
 def replay_scenario(scenario: Scenario, run_dir: Path) -> ScenarioResult:
     ws = episode_workspace(scenario, run_dir / scenario.id / "ws")
-    ledger_path = run_dir / f"{scenario.id}.jsonl"
+    ledger_path = run_dir / f"{scenario.id}.db"
     gw = Gateway(scenario.task, ws, ledger_path)
     res = ScenarioResult(
         id=scenario.id,

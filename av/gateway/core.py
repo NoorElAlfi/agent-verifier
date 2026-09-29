@@ -86,6 +86,10 @@ class Gateway:
         record = self.pipeline.run(contract, self.task)
         executed = record.executed
         output = self._output(tool, record) if executed else ""
+        if executed and tool == "run_tests" and not any(p.name == "run_tests" for p in record.probes):
+            # The tier catalog runs no probe for a read-only tool; the result the agent sees still
+            # comes from the sandboxed run_tests probe on a disposable copy, never the host.
+            output = self._run_tests_probe(contract)
         if executed and tool in ("list_files", "read_file", "run_tests"):
             self.taint_store.record_read(self._source_ref(tool, contract.target), output)
 
@@ -111,6 +115,22 @@ class Gateway:
         with self.refusals_path.open("a") as f:
             f.write(json.dumps(row) + "\n")
 
+    def _run_tests_probe(self, contract) -> str:
+        probe = self.components.probes.get("run_tests")
+        if probe is None:
+            return "(no test output: no run_tests probe is wired)"
+        try:
+            r = probe.run(contract, self.workspace)
+        except Exception as exc:  # noqa: BLE001 - reported to the agent, nothing executes
+            return f"(tests could not run: {type(exc).__name__})"
+        return f"(tests could not run: {r.error})" if r.error else self._probe_text(r)
+
+    @staticmethod
+    def _probe_text(result) -> str:
+        """pytest's output tail (which tests failed), falling back to the one-line summary."""
+        tail = (result.details or {}).get("output_tail")
+        return str(tail).strip() if tail else result.summary
+
     @staticmethod
     def _source_ref(tool: str, target: str) -> str:
         return target if tool == "read_file" else f"{tool}:{target}"
@@ -120,7 +140,7 @@ class Gateway:
         if tool == "run_tests":
             for p in record.probes:
                 if p.name == "run_tests":
-                    return p.summary
+                    return Gateway._probe_text(p)
             return "(no test output: the run_tests probe did not run)"
         out = record.execution.output if record.execution else None
         return "" if out is None else str(out)

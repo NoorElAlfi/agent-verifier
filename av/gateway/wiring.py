@@ -1,22 +1,12 @@
 """The ONE place where the gateway's components are chosen.
 
-Wave 2 built policy/ledger/executor (A), checks/tiering/taint (B) and probes (C) in parallel, so
-each entry below is a clearly labelled STAND-IN from `av/gateway/standins.py`. The merge step
-replaces an entry by changing its factory (and its label) here; nothing else in the gateway,
-replay or agent code changes. `describe()` prints the labels so a demo can never silently run
-on stand-ins: `make demo` shows "components: policy=standin ...".
+Wave 2 built policy/ledger/executor (A), checks/tiering/taint (B) and probes (C) in parallel;
+the Wave 2 merge swapped D's stand-ins for the real components here. `describe()` prints the
+labels so a demo shows what it ran on ("components: policy=real ..."), and the live path refuses
+to run while any row is labelled `standin` (av/agent/react.py).
 
-To swap in a real component, edit the matching row, for example:
-
-    "policy":  ("real", lambda: OpaPolicyEngine()),
-    "ledger":  ("real", lambda path: SqliteLedger(path)),
-    "checks":  ("real", lambda: [ScopeDriftCheck(), ProvenanceCheck()]),
-    "tier_fn": ("real", lambda: assign_tier),
-    "probe_catalog": ("real", lambda: TIER_PROBES),
-    "probes":  ("real", lambda: {"run_tests": RunTestsProbe(), "diff": DiffProbe(), ...}),
-
-The run_tests tool result is read from the probe named "run_tests" (its `summary`), so the real
-RunTestsProbe must be registered under that name and put its output in `summary`.
+The run_tests tool result is read from the probe named "run_tests" (its `summary`); when the
+tier's catalog doesn't list that probe, the gateway runs it itself (still sandboxed).
 """
 
 from __future__ import annotations
@@ -26,21 +16,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from av.contracts import basic_scope_ok
-from av.gateway import standins as s
+from av.executor import HashBoundExecutor
+from av.ledger import SqliteLedger
+from av.policy import OpaPolicyEngine
+from av.probes import DiffProbe, RunTestsProbe, SecretScanProbe
+from av.verify import PROBE_CATALOG, TaintStoreImpl, assign_tier, outcome_checks, scope_ok, verification_checks
 
 #: name -> (label, factory). Factories take no arguments, except "ledger" which takes the path.
 COMPONENTS: dict[str, tuple[str, Callable[..., Any]]] = {
-    "policy": ("standin", lambda: s.StandInPolicy()),
-    "checks": ("standin", lambda: [s.StandInScopeCheck(), s.StandInProvenanceCheck()]),
-    "outcome_checks": ("none", lambda: []),
-    "probes": ("standin", lambda: {"run_tests": s.StandInRunTestsProbe()}),
-    "probe_catalog": ("standin", lambda: dict(s.STAND_IN_CATALOG)),
-    "tier_fn": ("standin", lambda: s.stand_in_tier),
-    "scope_fn": ("core", lambda: basic_scope_ok),
-    "taint_store": ("standin", lambda: s.StandInTaintStore()),
-    "executor": ("standin", lambda: s.StandInExecutor()),
-    "ledger": ("standin", lambda path: s.ChainLedger(path)),
+    "policy": ("real", lambda: OpaPolicyEngine()),
+    "checks": ("real", lambda: verification_checks()),
+    "outcome_checks": ("real", lambda: outcome_checks(RunTestsProbe())),
+    "probes": ("real", lambda: {p.name: p for p in (RunTestsProbe(), DiffProbe(), SecretScanProbe())}),
+    "probe_catalog": ("real", lambda: dict(PROBE_CATALOG)),
+    "tier_fn": ("real", lambda: assign_tier),
+    "scope_fn": ("real", lambda: scope_ok),
+    "taint_store": ("real", lambda: TaintStoreImpl()),
+    "executor": ("real", lambda: HashBoundExecutor()),
+    "ledger": ("real", lambda path: SqliteLedger(path)),
 }
 
 

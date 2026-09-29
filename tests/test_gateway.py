@@ -19,6 +19,8 @@ from av.contracts import TOOLS, Decision
 from av.gateway.core import Gateway
 from av.gateway.server import build_server, tool_names
 from av.gateway.workspace import prepare_workspace
+from av.ledger import SqliteLedger
+from av.probes import sandbox as sb
 from av.scenarios import load_scenario
 
 # --------------------------------------------------------------------------- helpers
@@ -157,20 +159,36 @@ def test_injected_edit_is_blocked_by_provenance_not_scope(tmp_path):
     assert all(c.passed for c in r2.record.verification)  # (the probe may still fail: repo starts red)
 
 
+needs_probe_image = pytest.mark.skipif(
+    not sb.image_present(), reason="the av-probe image is unavailable (make probe-image)"
+)
+
+
+@needs_probe_image
 def test_run_tests_goes_through_the_probe_path(tmp_path):
     gw = make_gateway(tmp_path)
-    r = gw.call("run_tests", {})
-    assert r.executed and [p.name for p in r.record.probes] == ["run_tests"]
-    assert "1 failed" in r.text or "failed" in r.text  # the sample repo has a real bug
-    assert "average" in r.text
-
-
-def test_bad_fix_is_rejected_by_the_probe_and_workspace_untouched(tmp_path):
-    gw = make_gateway(tmp_path)
     before = gw.workspace.snapshot_hashes()
-    r = gw.call("write_file", {"path": "calc/ops.py", "content": "def add(a, b):\n    return a - b\n"})
-    assert r.decision == Decision.REJECT and not r.executed
-    assert gw.workspace.snapshot_hashes() == before
+    r = gw.call("run_tests", {})
+    assert r.executed and r.decision == Decision.ACCEPT_WITH_LOGGING  # tier 0 (a read)
+    assert "failed" in r.text and "average" in r.text  # the sample repo has a real bug
+    assert gw.workspace.snapshot_hashes() == before  # ran on a disposable copy
+
+
+BROKEN_ADD = (
+    "def add(a, b):\n    return a - b\n\n\n"
+    "def average(values):\n    return sum(values) / len(values)\n"
+)
+
+
+@needs_probe_image
+def test_bad_tier1_fix_executes_and_the_outcome_check_records_the_failure(tmp_path):
+    """Tier 1 is "automatic execution with rollback" (B's catalog runs no tests first); the
+    OutcomeCheck runs the tests after execution and records the failure."""
+    gw = make_gateway(tmp_path)
+    r = gw.call("write_file", {"path": "calc/ops.py", "content": BROKEN_ADD})
+    assert r.decision == Decision.ACCEPT and r.executed and r.record.risk_tier == 1
+    assert not r.record.outcome[0].passed
+    assert any("tests fail after execution" in x for x in r.record.reasons)
 
 
 def test_ledger_records_every_call_and_verifies(tmp_path):
@@ -184,21 +202,21 @@ def test_ledger_records_every_call_and_verifies(tmp_path):
 # --------------------------------------------------------------------------- live path, offline
 
 
-@pytest.fixture
-def allow_standins(monkeypatch):
-    monkeypatch.setenv("AV_ALLOW_STANDINS", "1")
-
-
-def test_live_is_refused_while_components_are_standins(tmp_path):
+def test_live_is_refused_while_components_are_standins(tmp_path, monkeypatch):
     from av.agent.react import run_episode
+    from av.gateway import wiring
 
+    table = dict(wiring.COMPONENTS)
+    table["probes"] = ("standin", table["probes"][1])
+    monkeypatch.setattr(wiring, "COMPONENTS", table)
+    monkeypatch.delenv("AV_ALLOW_STANDINS", raising=False)
     client = ScriptedHosted([])
     with use_clients(hosted=client), pytest.raises(RuntimeError, match="stand-ins"):
         run_episode("benign", "refused", model="fake-model", max_model_calls=10)
     assert client.calls == []
 
 
-def test_live_agent_path_offline_with_a_scripted_client(tmp_path, allow_standins):
+def test_live_agent_path_offline_with_a_scripted_client(tmp_path):
     from av.agent.react import run_episode
 
     fix = "def add(a: int, b: int) -> int:\n    return a + b\n\n\ndef average(values: list[float]) -> float:\n    return sum(values) / len(values)\n"
@@ -220,10 +238,8 @@ def test_live_agent_path_offline_with_a_scripted_client(tmp_path, allow_standins
     tools_seen = {t["function"]["name"] for t in client.calls[0]["tools"]}
     assert tools_seen == set(TOOLS)
     # the gateway ledgered the blocked CI edit and the executed fix
-    from av.gateway.standins import ChainLedger
-
-    led = ChainLedger(rec["ledger"])
-    decisions = [(r["contract"]["target"], r["final_decision"]) for r in led.records()]
+    led = SqliteLedger(rec["ledger"])
+    decisions = [(r.contract.target, r.final_decision.value) for r in led.records()]
     assert (".github/workflows/ci.yml", "reject") in decisions
     assert ("calc/ops.py", "accept") in decisions
     assert led.verify()
@@ -235,7 +251,7 @@ def test_live_agent_path_offline_with_a_scripted_client(tmp_path, allow_standins
     assert again == rec and len(client.calls) == n
 
 
-def test_episode_asserts_the_quota_budget_first(tmp_path, allow_standins):
+def test_episode_asserts_the_quota_budget_first(tmp_path):
     from av.agent.react import run_episode
 
     client = ScriptedHosted([])

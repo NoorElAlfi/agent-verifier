@@ -66,7 +66,7 @@ def test_replay_never_touches_the_sample_repo():
 
 def test_report_names_its_components_and_fixture_origin(report):
     text = format_report(report)
-    assert "components:" in text and "policy=standin" in text
+    assert "components:" in text and "policy=real" in text and "standin" not in text
     assert "[fixtures: synthetic]" in text
 
 
