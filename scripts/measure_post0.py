@@ -91,7 +91,7 @@ def _sh(cmd: str, cwd: Path | None = None, timeout: int = 900) -> tuple[int, str
 def _du(p: Path) -> str:
     if not p.exists():
         return "absent"
-    return _sh(f"du -sh {p} | cut -f1")[1].strip()
+    return _sh(f"du -shL {p} | cut -f1")[1].strip()
 
 
 def _episodes(prefix: tuple[str, ...]) -> list[dict]:
@@ -108,11 +108,11 @@ def _log_stats(path: str) -> tuple[dict, str]:
 
     log = read_eval_log(path)
     usage = (log.stats.model_usage if log.stats else {}) or {}
-    tk = {"prompt": sum(u.input_tokens for u in usage.values()), "completion": sum(u.output_tokens for u in usage.values())}
+    tk = {"prompt": sum(u.input_tokens + (u.input_tokens_cache_read or 0) for u in usage.values()), "completion": sum(u.output_tokens for u in usage.values())}
     try:
-        wall = f"{(log.stats.completed_at - log.stats.started_at).total_seconds():.1f}"
+        wall = f"{(datetime.fromisoformat(str(log.stats.completed_at)) - datetime.fromisoformat(str(log.stats.started_at))).total_seconds():.0f}"
     except Exception:
-        wall = datetime.fromisoformat(str(log.stats.completed_at)) and "n/a"
+        wall = "n/a"
     return tk, wall
 
 
@@ -129,14 +129,12 @@ def build_report() -> str:
     rc, out, t_clone = _sh(f"git clone -q {REPO_ROOT} {fresh}")
     m1 = "clone failed"
     if rc == 0:
-        for f in (".env",):
-            if (REPO_ROOT / f).exists():
-                shutil.copy(REPO_ROOT / f, fresh / f)
+        # No .env copy and LIVE forced off: the fresh-clone demo is replay only (no credentials, no hosted calls).
         rc1, o1, t_sync = _sh("uv sync -q", cwd=fresh)
         (fresh / "bin").mkdir(exist_ok=True)
         if (REPO_ROOT / "bin" / "opa").exists() and not (fresh / "bin" / "opa").exists():
             (fresh / "bin" / "opa").symlink_to(REPO_ROOT / "bin" / "opa")
-        rc2, o2, t_demo = _sh("make demo", cwd=fresh)
+        rc2, o2, t_demo = _sh("env -u LIVE make demo LIVE=0", cwd=fresh)
         calls_line = next((ln for ln in o2.splitlines() if "hosted calls" in ln), "no 'hosted calls' line")
         m1 = (f"`make demo` (replay) on a fresh clone at /tmp/fresh: **{t_demo:.1f} s** (exit {rc2}); "
               f"`uv sync` took {t_sync:.1f} s and clone {t_clone:.1f} s (not part of the demo time); "
@@ -155,7 +153,7 @@ def build_report() -> str:
     # M11
     eps = _episodes(("rec-", "trial-c2"))  # trial-c (failed, MissingSessionID) is excluded on purpose
     lines += ["## M11: calls and tokens per live episode", "",
-              "| run | scenario | status | hosted calls | prompt tok | completion tok | wall s |", "|---|---|---|---|---|---|---|"]
+              "| run | scenario | status | hosted calls | prompt tok (incl. cached) | completion tok | wall s |", "|---|---|---|---|---|---|---|"]
     ok = [e for e in eps if e["status"] == "success"]
     for e in eps:
         run = u["runs"].get(e["run_id"], "?")
