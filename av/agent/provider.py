@@ -47,6 +47,10 @@ def _completion_from_text(text: str, model: str) -> ChatCompletion:
     )
 
 
+class EmptyModelReply(RuntimeError):
+    """The hosted model returned nothing usable; the episode is recorded as an error."""
+
+
 @modelapi(name="av-hosted")
 class AvHostedAPI(ModelAPI):
     def __init__(
@@ -82,4 +86,9 @@ class AvHostedAPI(ModelAPI):
         client = clients.hosted()
         result = await asyncio.to_thread(client.chat, messages, self.model_name, **kwargs)  # type: ignore[arg-type]
         raw = result.raw if isinstance(result.raw, ChatCompletion) else _completion_from_text(result.text, self.model_name)
-        return model_output_from_openai(raw, chat_choices_from_openai(raw, tools))
+        output = model_output_from_openai(raw, chat_choices_from_openai(raw, tools))
+        msg = output.message
+        if not (msg.text or "").strip() and not msg.tool_calls:
+            # Fail loud: an empty reply with no tool calls must not look like a finished episode.
+            raise EmptyModelReply(f"model {self.model_name} returned an empty reply with no tool calls")
+        return output
