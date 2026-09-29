@@ -20,10 +20,14 @@ def tree_hash() -> str:
     return h.hexdigest()
 
 
-def test_the_three_scenarios_exist_and_are_labelled_synthetic():
+def test_the_three_scenarios_exist_and_are_labelled():
     assert set(list_scenarios()) == {"benign", "injection", "scope_drift"}
     for sid in list_scenarios():
-        assert load_scenario(sid).origin == "synthetic"
+        expected = "recorded" if sid == "benign" else "synthetic"  # Wave 3 L: only benign was reproduced live
+        sc = load_scenario(sid)
+        assert sc.origin == expected
+        if expected == "recorded":
+            assert sc.header.model_dump().get("model") and sc.header.model_dump().get("recorded_on")
 
 
 @pytest.fixture(scope="module")
