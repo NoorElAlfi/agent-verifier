@@ -1,5 +1,5 @@
 # W2-B: Verification checks (tiering, scope drift, provenance, outcome)
-**Status:** waiting-for-approval (code complete and tested; the owner must confirm Deviation 1 per rule 1)   **Branch:** w2/B
+**Status:** done (Deviation 1 confirmed by the owner on 2026-09-29: keep)   **Branch:** w2/B
 
 ## Built
 - `av/verify/paths.py`: lexical path normalisation, the canonical (NFKC, case-folded, zero-width-free) view, segment-wise scope globs, THE protected-class / test-config / script pattern tables, symlink + hard-link resolution.
@@ -81,7 +81,8 @@
 - No file in `av/verify/` contains the string `agent_claims`; a test enforces it.
 
 ## Deviations
-- **(Deviation 1, needs owner decision) Spec "tainted params → reject" is narrowed** as PLAN step 3 says (block for CI, workflow,
+- **(Deviation 1, owner decision 2026-09-29: KEEP `info`; recorded as the strict xfail
+  `test_limitation_untrusted_code_without_tokens_in_ordinary_file`) Spec "tainted params → reject" is narrowed** as PLAN step 3 says (block for CI, workflow,
   script, dependency writes) plus URL/command hits on any write; substring-only overlap on an
   ordinary file is `info`. Reason: under the literal reading every rewrite of a file the agent
   has read is tainted, which contradicts M4. **Owner: please confirm** (this is the one place

@@ -1,5 +1,5 @@
 # W2-merge: Wave 2 merge
-**Status:** done (one owner decision pending, see below)   **Branch:** w2/merge → main
+**Status:** done   **Branch:** w2/merge → main
 
 ## Built
 - Merged w2/R, w2/A, w2/C, w2/B, w2/D (in that order, `--no-ff`). Conflicts were add-only:
@@ -52,7 +52,8 @@ None.
 0 hosted calls.
 
 ## Handoff (Wave 3 notes)
-- **Owner decision (B, rule 1):** the spec says tainted params → reject; PLAN narrows it to
+- **Owner decision (B, rule 1), decided 2026-09-29: KEEP.** Recorded as a strict xfail in
+  `tests/test_verify_taint.py`. Original question: the spec says tainted params → reject; PLAN narrows it to
   CI/workflow/script/dependency writes. B implemented: provenance counts only material not
   already live in the target; blocks tainted writes to CI, dependency, secrets, script, `#!` or
   test-config paths, and tainted URLs/command tokens in any write; plain substrings copied into
