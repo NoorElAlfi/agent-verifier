@@ -17,3 +17,14 @@ bin/opa:
 
 test:
 	uv run pytest -q
+
+.PHONY: clean probe-image
+# Wave 2 C: remove the probe image, leftover probe containers and probe-labelled volumes only
+# (never a global volume prune: that would touch other projects, CLAUDE.md rule 15).
+clean:
+	-docker rm -f $$(docker ps -aq --filter name=av-probe-) 2>/dev/null
+	-docker rmi -f av-probe:latest
+	-docker volume prune -f --filter label=av.probe=1
+
+probe-image:
+	docker build -t av-probe:latest -f docker/probe.Dockerfile docker
