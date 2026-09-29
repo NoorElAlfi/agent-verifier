@@ -99,7 +99,9 @@ def run_episode(
     out_dir = data_dir() / "episodes" / run_id
     out_file = out_dir / f"{scenario_id}.json"
     if out_file.exists():
-        return json.loads(out_file.read_text())
+        done = json.loads(out_file.read_text())
+        if done.get("status") == "success":
+            return done  # finished episodes are skipped; an errored one is retried
 
     assert_live_ready()
     scenario = load_scenario(scenario_id)
@@ -124,7 +126,8 @@ def run_episode(
         "scenario": scenario_id,
         "run_id": run_id,
         "model": name,
-        "status": log.status,
+        "status": "error" if (log.status != "success" or any(x.error for x in (log.samples or []))) else "success",
+        "error": next((str(x.error.message)[:300] for x in (log.samples or []) if x.error), None),
         "ts": datetime.now(UTC).isoformat(),
         "hosted_calls": quota.usage()["total"] - before,
         "ledger": str(ledger),

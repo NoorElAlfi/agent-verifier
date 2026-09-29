@@ -57,7 +57,10 @@ class HostedClient:
         from openai import OpenAI
 
         self.default_model = default_model
-        self._client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout, max_retries=0)
+        self._client = OpenAI(base_url=base_url, api_key=api_key, timeout=timeout, max_retries=0,
+            # OpenCode Go rejects requests without a session id (HTTP 400 MissingSessionID).
+            default_headers={"x-opencode-session": os.environ.get("AV_RUN_ID") or "av"},
+        )
 
     def chat(self, messages: list[Message], model: str | None = None, **kwargs: Any) -> ChatResult:
         _refuse_if_blocked("hosted")
