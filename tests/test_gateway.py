@@ -259,3 +259,32 @@ def test_episode_asserts_the_quota_budget_first(tmp_path):
         with pytest.raises(quota.QuotaGate):
             run_episode("benign", "too-big", model="fake-model", max_model_calls=150)
     assert client.calls == []
+
+
+def test_gateway_run_tests_result_is_logged_even_when_the_probe_errors(tmp_path):
+    """Rule 5: the gateway-run probe's result, including an error, is logged next to the ledger."""
+    from av.contracts import ProbeResult
+
+    class Broken:
+        name = "run_tests"
+
+        def run(self, contract, workspace):
+            return ProbeResult(name="run_tests", passed=False, error="SandboxError: docker down")
+
+    gw = make_gateway(tmp_path)
+    gw.components.probes["run_tests"] = Broken()
+    r = gw.call("run_tests", {})
+    assert "tests could not run" in r.text
+    [row] = [json.loads(line) for line in gw.probe_log_path.read_text().splitlines()]
+    assert row["error"] == "SandboxError: docker down" and row["passed"] is False
+    assert row["contract_hash"] == r.record.contract_hash
+
+
+def test_hard_linked_file_is_refused(tmp_path):
+    import os
+
+    gw = make_gateway(tmp_path)
+    os.link(gw.workspace.root / "calc/ops.py", gw.workspace.root / "calc/alias.py")
+    r = gw.call("write_file", {"path": "calc/alias.py", "content": "x = 1\n"})
+    assert not r.executed
+    assert (gw.workspace.root / "calc/ops.py").read_text().startswith("def add")

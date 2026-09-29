@@ -69,6 +69,8 @@ class Gateway:
         )
         self.refusals_path = Path(str(ledger_path) + ".refusals.jsonl")
         self.refusals_path.parent.mkdir(parents=True, exist_ok=True)
+        # run_tests probe results the gateway runs itself (after the ledger row) are logged here.
+        self.probe_log_path = Path(str(ledger_path) + ".run_tests.jsonl")
         self._lock = threading.Lock()
 
     def call(self, tool: str, params: dict[str, Any] | None = None, agent_claims: Any = None) -> GatewayReply:
@@ -118,12 +120,30 @@ class Gateway:
     def _run_tests_probe(self, contract) -> str:
         probe = self.components.probes.get("run_tests")
         if probe is None:
+            self._log_probe(contract, passed=False, summary="", error="no run_tests probe is wired")
             return "(no test output: no run_tests probe is wired)"
         try:
             r = probe.run(contract, self.workspace)
-        except Exception as exc:  # noqa: BLE001 - reported to the agent, nothing executes
+        except Exception as exc:  # noqa: BLE001 - logged and reported to the agent; nothing executes
+            self._log_probe(contract, passed=False, summary="", error=f"{type(exc).__name__}: {exc}")
             return f"(tests could not run: {type(exc).__name__})"
+        self._log_probe(contract, passed=r.passed, summary=r.summary, error=r.error)
         return f"(tests could not run: {r.error})" if r.error else self._probe_text(r)
+
+    def _log_probe(self, contract, passed: bool, summary: str, error: str | None) -> None:
+        """The pipeline's ledger row for this call is already written, so the probe's own result
+        (including any error, rule 5) goes to a side log next to the ledger."""
+        row = {
+            "ts": datetime.now(UTC).isoformat(),
+            "task_id": self.task.task_id,
+            "contract_hash": contract.hash(),
+            "probe": "run_tests",
+            "passed": passed,
+            "summary": summary,
+            "error": error,
+        }
+        with self.probe_log_path.open("a") as f:
+            f.write(json.dumps(row) + "\n")
 
     @staticmethod
     def _probe_text(result) -> str:

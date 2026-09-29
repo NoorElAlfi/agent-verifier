@@ -41,6 +41,8 @@ def _resolve(root: Path, rel: str) -> Path:
         cur = cur / part
         if cur.is_symlink():
             raise ValueError(f"{rel!r} passes through a symlink")
+    if cur.is_file() and cur.stat().st_nlink > 1:
+        raise ValueError(f"{rel!r} is hard-linked (another path shares its contents)")
     resolved = cur.resolve()
     if resolved != root.resolve() and root.resolve() not in resolved.parents:
         raise ValueError(f"{rel!r} escapes the workspace")
@@ -113,7 +115,7 @@ class SandboxWorkspace:
     def disposable_copy(self) -> Iterator[Path]:
         with tempfile.TemporaryDirectory(prefix="av-copy-") as d:
             dst = Path(d) / "ws"
-            shutil.copytree(self.root, dst, ignore=shutil.ignore_patterns(*IGNORED_DIRS, "*.pyc"))
+            shutil.copytree(self.root, dst, symlinks=True, ignore=shutil.ignore_patterns(*IGNORED_DIRS, "*.pyc"))
             yield dst
 
     def apply(self, contract: ActionContract) -> ExecResult:
@@ -125,7 +127,7 @@ def prepare_workspace(source: Path, dest: Path, overlay: Path | None = None) -> 
     ever writes to the source, so `examples/sample_repo` stays pristine."""
     if dest.exists():
         shutil.rmtree(dest)
-    shutil.copytree(source, dest, ignore=shutil.ignore_patterns(*IGNORED_DIRS, "*.pyc"))
+    shutil.copytree(source, dest, symlinks=True, ignore=shutil.ignore_patterns(*IGNORED_DIRS, "*.pyc"))
     if overlay is not None and overlay.is_dir():
-        shutil.copytree(overlay, dest, dirs_exist_ok=True)
+        shutil.copytree(overlay, dest, symlinks=True, dirs_exist_ok=True)
     return dest
