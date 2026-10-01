@@ -21,7 +21,7 @@ Requirements: Linux or WSL2 (Ubuntu), Docker (Docker Desktop with WSL integratio
 [uv](https://docs.astral.sh/uv/), `make`, `curl`.
 
 ```bash
-git clone {{REPO_URL}} agent-verifier && cd agent-verifier
+git clone https://github.com/NoorElAlfi/agent-verifier.git && cd agent-verifier
 make setup          # uv sync + a pinned, checksum-verified OPA binary in ./bin
 make probe-image    # builds the small av-probe sandbox image (python:3.12-slim + pytest)
 make demo           # replays the 3 scenarios: no model calls, prints "hosted calls: 0"

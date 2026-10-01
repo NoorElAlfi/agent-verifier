@@ -233,5 +233,5 @@ Post 1 (around late December) runs the frozen plan on CI/CD tasks and reports ev
 separately, whatever it shows. Post 2 moves to SRE remediation on a third-party environment
 (SREGym, falling back to AIOpsLab or ITBench) and adds adversarial robustness.
 
-The code is Apache-2.0: {{REPO_URL}}. If you think a check is missing, or the plan has a hole
+The code is Apache-2.0: [github.com/NoorElAlfi/agent-verifier](https://github.com/NoorElAlfi/agent-verifier). If you think a check is missing, or the plan has a hole
 that would let me fool myself, I'd rather hear it before the tag than after.
